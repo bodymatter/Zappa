@@ -1,10 +1,4 @@
 language: python
-matrix:
-  include:
-    - python: "2.7"
-    - python: "3.6"
-    - python: "3.7"
-      dist: xenial
 # command to install dependencies
 cache:
   - pip
@@ -12,13 +6,19 @@ install:
   - "pip install --upgrade pip; pip install --upgrade setuptools; pip install -r test_requirements.txt; pip install -e git+https://github.com/django/django-contrib-comments.git#egg=django-contrib-comments; python setup.py install" 
 # command to run tests
 env:
-  matrix:
+  global:
     - TESTCASE=tests/tests_docs.py
     - TESTCASE=tests/test_handler.py
     - TESTCASE=tests/tests_middleware.py
     - TESTCASE=tests/tests_placebo.py
     - TESTCASE=tests/tests_async.py
     - TESTCASE=tests/tests.py
+  matrix:
+    include:
+      - python: "2.7"
+      - python: "3.6"
+      - python: "3.7"
+        dist: xenial
 script: 
   - nosetests $TESTCASE --with-coverage --cover-package=zappa --with-timer
     #  - coverage combine --append
