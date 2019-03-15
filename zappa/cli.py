@@ -1796,7 +1796,7 @@ class ZappaCLI(object):
             if confirm != 'y':
                 return
 
-        # Make sure this isn't already deployed.
+        # Make sure this is already deployed.
         deployed_versions = self.zappa.get_lambda_function_versions(self.lambda_name)
         if len(deployed_versions) == 0:
             raise ClickException("This application " + click.style("isn't deployed yet", fg="red") +
@@ -1808,7 +1808,7 @@ class ZappaCLI(object):
         cert_key_location = self.stage_config.get('certificate_key', None)
         cert_chain_location = self.stage_config.get('certificate_chain', None)
         cert_arn = self.stage_config.get('certificate_arn', None)
-        base_path = self.stage_config.get('base_path', None)
+        use_regional_endpoint = self.stage_config.get('use_regional_endpoint', False)
 
         # These are sensitive
         certificate_body = None
@@ -1852,6 +1852,7 @@ class ZappaCLI(object):
 
         # Get cert and update domain.
 
+        route53 = self.stage_config.get('route53_enabled', True)
         # Let's Encrypt
         if not cert_location and not cert_arn:
             from .letsencrypt import get_cert_and_update_domain
@@ -1865,9 +1866,9 @@ class ZappaCLI(object):
 
         # Custom SSL / ACM
         else:
-            route53 = self.stage_config.get('route53_enabled', True)
-            if not self.zappa.get_domain_name(self.domain, route53=route53):
-                dns_name = self.zappa.create_domain_name(
+            if not self.zappa.get_api_domain_name(self.domain):
+                # Follow the create flow, if there is NO entry in API Gateway for the domain
+                agw_response = self.zappa.create_domain_name(
                     domain_name=self.domain,
                     certificate_name=self.domain + "-Zappa-Cert",
                     certificate_body=certificate_body,
@@ -1876,14 +1877,15 @@ class ZappaCLI(object):
                     certificate_arn=cert_arn,
                     lambda_name=self.lambda_name,
                     stage=self.api_stage,
-                    base_path=base_path
+                    base_path=base_path, 
+                    use_regional_endpoint=use_regional_endpoint
                 )
-                if route53:
-                    self.zappa.update_route53_records(self.domain, dns_name)
+
                 print("Created a new domain name with supplied certificate. Please note that it can take up to 40 minutes for this domain to be "
                       "created and propagated through AWS, but it requires no further work on your part.")
             else:
-                self.zappa.update_domain_name(
+                # Follow the update flow, if there is an entry in API Gateway for the domain
+                agw_response = self.zappa.update_domain_name(
                     domain_name=self.domain,
                     certificate_name=self.domain + "-Zappa-Cert",
                     certificate_body=certificate_body,
@@ -1893,8 +1895,21 @@ class ZappaCLI(object):
                     lambda_name=self.lambda_name,
                     stage=self.api_stage,
                     route53=route53,
-                    base_path=base_path
+                    base_path=base_path, 
+                    use_regional_endpoint=use_regional_endpoint
                 )
+
+            if route53:
+                # Uses UPSERT, so always try to update route53, if route53 in use
+                # https://github.com/Miserlou/Zappa/issues/1465
+                if use_regional_endpoint:
+                    dns_name = agw_response['regionalDomainName']
+                    target_hosted_zone_id = agw_response['regionalHostedZoneId']
+                    self.zappa.update_route53_records_for_regional_alias(
+                        self.domain, dns_name, target_hosted_zone_id)
+                else:
+                    dns_name = agw_response['distributionDomainName']
+                    self.zappa.update_route53_records(self.domain, dns_name)
 
             cert_success = True
 
