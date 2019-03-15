@@ -1808,6 +1808,7 @@ class ZappaCLI(object):
         cert_key_location = self.stage_config.get('certificate_key', None)
         cert_chain_location = self.stage_config.get('certificate_chain', None)
         cert_arn = self.stage_config.get('certificate_arn', None)
+        base_path = self.stage_config.get('base_path', None)
         use_regional_endpoint = self.stage_config.get('use_regional_endpoint', False)
 
         # These are sensitive
